@@ -151,9 +151,10 @@ impl ChatAdapter for SlackAdapter {
     }
 
     async fn send_message(&self, channel: &ChannelRef, content: &str) -> Result<MessageRef> {
+        let mrkdwn = markdown_to_mrkdwn(content);
         let mut body = serde_json::json!({
             "channel": channel.channel_id,
-            "text": content,
+            "text": mrkdwn,
         });
         if let Some(thread_ts) = &channel.thread_id {
             body["thread_ts"] = serde_json::Value::String(thread_ts.clone());
@@ -174,12 +175,13 @@ impl ChatAdapter for SlackAdapter {
     }
 
     async fn edit_message(&self, msg: &MessageRef, content: &str) -> Result<()> {
+        let mrkdwn = markdown_to_mrkdwn(content);
         self.api_post(
             "chat.update",
             serde_json::json!({
                 "channel": msg.channel.channel_id,
                 "ts": msg.message_id,
-                "text": content,
+                "text": mrkdwn,
             }),
         )
         .await?;
@@ -564,4 +566,28 @@ static SLACK_MENTION_RE: LazyLock<regex::Regex> =
 
 fn strip_slack_mention(text: &str) -> String {
     SLACK_MENTION_RE.replace_all(text, "").trim().to_string()
+}
+
+/// Convert Markdown (as output by Claude Code) to Slack mrkdwn format.
+fn markdown_to_mrkdwn(text: &str) -> String {
+    static BOLD_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\*\*(.+?)\*\*").unwrap());
+    static ITALIC_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\*([^*]+?)\*").unwrap());
+    static LINK_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap());
+    static HEADING_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?m)^#{1,6}\s+(.+)$").unwrap());
+    static CODE_BLOCK_LANG_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"```\w+\n").unwrap());
+
+    // Order: bold first (** → placeholder), then italic (* → _), then restore bold
+    let text = BOLD_RE.replace_all(text, "\x01$1\x02");       // **bold** → \x01bold\x02
+    let text = ITALIC_RE.replace_all(&text, "_${1}_");         // *italic* → _italic_
+    // Restore bold: \x01bold\x02 → *bold*
+    let text = text.replace(['\x01', '\x02'], "*");
+    let text = LINK_RE.replace_all(&text, "<$2|$1>");          // [text](url) → <url|text>
+    let text = HEADING_RE.replace_all(&text, "*$1*");          // # heading → *heading*
+    let text = CODE_BLOCK_LANG_RE.replace_all(&text, "```\n"); // ```rust → ```
+    text.into_owned()
 }
