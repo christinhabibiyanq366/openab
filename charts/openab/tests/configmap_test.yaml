@@ -88,3 +88,12 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "must be one of: involved, mentions, multibot-mentions"
+
+  - it: renders slack allow_user_messages = "multibot-mentions"
+    set:
+      agents.kiro.slack.enabled: true
+      agents.kiro.slack.allowUserMessages: multibot-mentions
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'allow_user_messages = "multibot-mentions"'
