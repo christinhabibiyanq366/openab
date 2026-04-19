@@ -261,6 +261,25 @@ impl SessionPool {
         conn.set_config_option(config_id, value).await
     }
 
+    /// Cancel the current in-flight operation for a session.
+    pub async fn cancel_session(&self, thread_id: &str) -> Result<()> {
+        let conn = {
+            let state = self.state.read().await;
+            state.active.get(thread_id).cloned()
+                .ok_or_else(|| anyhow!("no session for thread {thread_id}"))?
+        };
+        let conn = conn.lock().await;
+        let session_id = conn.acp_session_id.as_ref()
+            .ok_or_else(|| anyhow!("no active session"))?;
+        let data = serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "session/cancel",
+            "params": {"sessionId": session_id}
+        }))?;
+        tracing::info!(session_id, "sending session/cancel");
+        conn.send_raw(&data).await
+    }
+
     pub async fn cleanup_idle(&self, ttl_secs: u64) {
         let cutoff = Instant::now() - std::time::Duration::from_secs(ttl_secs);
 

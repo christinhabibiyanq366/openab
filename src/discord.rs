@@ -537,6 +537,10 @@ impl EventHandler for Handler {
                     vec![
                         CreateCommand::new("models")
                             .description("Select the AI model for this session"),
+                        CreateCommand::new("agents")
+                            .description("Select the agent mode for this session"),
+                        CreateCommand::new("cancel")
+                            .description("Cancel the current operation"),
                     ],
                 )
                 .await
@@ -551,7 +555,13 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(cmd) if cmd.data.name == "models" => {
-                self.handle_model_command(&ctx, &cmd).await;
+                self.handle_config_command(&ctx, &cmd, "model", "model").await;
+            }
+            Interaction::Command(cmd) if cmd.data.name == "agents" => {
+                self.handle_config_command(&ctx, &cmd, "agent", "agent").await;
+            }
+            Interaction::Command(cmd) if cmd.data.name == "cancel" => {
+                self.handle_cancel_command(&ctx, &cmd).await;
             }
             Interaction::Component(comp) if comp.data.custom_id.starts_with("acp_config_") => {
                 self.handle_config_select(&ctx, &comp).await;
@@ -599,35 +609,54 @@ impl Handler {
         )
     }
 
-    async fn handle_model_command(
+    async fn handle_config_command(
         &self,
         ctx: &Context,
         cmd: &serenity::model::application::CommandInteraction,
+        category: &str,
+        label: &str,
     ) {
-        // thread_key must match the format used in adapter.rs handle_message:
-        // "{platform}:{channel_or_thread_id}"
         let thread_key = format!("discord:{}", cmd.channel_id.get());
-
         let config_options = self.router.pool().get_config_options(&thread_key).await;
-
-        let select = Self::build_config_select(&config_options, "model");
+        let select = Self::build_config_select(&config_options, category);
 
         let response = match select {
             Some(menu) => CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .content("🔧 Select a model:")
+                    .content(format!("🔧 Select a {label}:"))
                     .components(vec![CreateActionRow::SelectMenu(menu)])
                     .ephemeral(true),
             ),
             None => CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
-                    .content("⚠️ No model options available. Start a conversation first by @mentioning the bot.")
+                    .content(format!("⚠️ No {label} options available. Start a conversation first by @mentioning the bot."))
                     .ephemeral(true),
             ),
         };
 
         if let Err(e) = cmd.create_response(&ctx.http, response).await {
-            tracing::error!(error = %e, "failed to respond to /model command");
+            tracing::error!(error = %e, category, "failed to respond to slash command");
+        }
+    }
+
+    async fn handle_cancel_command(
+        &self,
+        ctx: &Context,
+        cmd: &serenity::model::application::CommandInteraction,
+    ) {
+        let thread_key = format!("discord:{}", cmd.channel_id.get());
+        let result = self.router.pool().cancel_session(&thread_key).await;
+
+        let msg = match result {
+            Ok(()) => "🛑 Cancel signal sent.".to_string(),
+            Err(e) => format!("⚠️ {e}"),
+        };
+
+        let response = CreateInteractionResponse::Message(
+            CreateInteractionResponseMessage::new().content(msg).ephemeral(true),
+        );
+        if let Err(e) = cmd.create_response(&ctx.http, response).await {
+            tracing::error!(error = %e, "failed to respond to /cancel command");
         }
     }
 

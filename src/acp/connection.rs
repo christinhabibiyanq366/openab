@@ -280,7 +280,7 @@ impl AcpConnection {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-    async fn send_raw(&self, data: &str) -> Result<()> {
+    pub async fn send_raw(&self, data: &str) -> Result<()> {
         debug!(data = data.trim(), "acp_send");
         let mut w = self.stdin.lock().await;
         w.write_all(data.as_bytes()).await?;
