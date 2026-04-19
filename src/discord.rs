@@ -148,12 +148,10 @@ impl Handler {
         };
 
         // Both cached → skip fetch entirely
-        if cached_involved && cached_multibot {
-            return (true, true);
-        }
-        // Involved cached + not MultibotMentions mode → don't need other_bot info
-        if cached_involved && self.allow_user_messages != AllowUsers::MultibotMentions {
-            return (true, false);
+        // With early detection from msg.author, multibot_threads is populated
+        // eagerly — no need to fetch just to check for other bots.
+        if cached_involved {
+            return (true, cached_multibot);
         }
 
         // Fetch recent messages
@@ -319,6 +317,14 @@ impl EventHandler for Handler {
 
         if !in_allowed_channel && !in_thread {
             return;
+        }
+
+        // Early multibot detection: if the current message is from another bot,
+        // this thread is multi-bot. Cache it now — no fetch needed.
+        if in_thread && msg.author.bot && msg.author.id != bot_id {
+            let key = msg.channel_id.to_string();
+            let mut cache = self.multibot_threads.lock().await;
+            cache.entry(key).or_insert_with(tokio::time::Instant::now);
         }
 
         // User message gating (mirrors Slack's AllowUsers logic).
