@@ -692,7 +692,7 @@ pub async fn run_slack_adapter(
                                                                 continue;
                                                             }
                                                         }
-                                                    } else {
+                                                    } else if is_plain_user_message(subtype, msg_text) {
                                                         tracker.on_human_message(&turn_key);
                                                     }
                                                 }
@@ -1094,6 +1094,29 @@ fn resolve_slack_mentions(text: &str, bot_id: Option<&str>) -> String {
     }
 }
 
+/// True only when a Slack non-bot event represents a real user message
+/// that should reset the bot-turn counter.
+///
+/// Many Slack subtypes (pinned_item, channel_name, channel_archive,
+/// group_join / group_leave / group_topic / group_purpose, reminder_add,
+/// tombstone, …) carry a `user` field so the event loop sees
+/// `is_bot == false`, but they represent administrative/system actions,
+/// not conversation. Resetting the counter on them would let runaway
+/// bot-to-bot loops re-arm whenever any pin / rename / archive happens.
+///
+/// Mirrors Discord's `MessageType::Regular | InlineReply` + non-empty
+/// content gate in `src/discord.rs`. Regression parity for
+/// openabdev/openab#497.
+fn is_plain_user_message(subtype: &str, text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+    matches!(
+        subtype,
+        "" | "me_message" | "thread_broadcast" | "file_share",
+    )
+}
+
 /// Convert Markdown (as output by Claude Code) to Slack mrkdwn format.
 fn markdown_to_mrkdwn(text: &str) -> String {
     static BOLD_RE: LazyLock<regex::Regex> =
@@ -1151,6 +1174,53 @@ mod tests {
     fn resolve_mentions_unknown_bot_preserves_all() {
         let out = resolve_slack_mentions("<@U1BOT> hi <@U2ALICE>", None);
         assert_eq!(out, "<@U1BOT> hi <@U2ALICE>");
+    }
+
+    // --- is_plain_user_message tests (regression for openabdev/openab#497 parity) ---
+
+    /// Empty message text never counts as a user message (regardless of subtype).
+    #[test]
+    fn empty_text_is_not_plain_user_message() {
+        assert!(!is_plain_user_message("", ""));
+        assert!(!is_plain_user_message("me_message", ""));
+    }
+
+    /// No subtype + non-empty text = plain user message (the common case).
+    #[test]
+    fn no_subtype_nonempty_text_is_plain_user_message() {
+        assert!(is_plain_user_message("", "hello"));
+    }
+
+    /// Whitelisted subtypes with non-empty text are user messages.
+    #[test]
+    fn whitelisted_subtypes_are_plain_user_messages() {
+        assert!(is_plain_user_message("me_message", "waves"));
+        assert!(is_plain_user_message("thread_broadcast", "see channel"));
+        assert!(is_plain_user_message("file_share", "caption"));
+    }
+
+    /// System-ish subtypes (even from real users) are NOT user messages —
+    /// resetting the counter on them would let bot-to-bot loops re-arm.
+    #[test]
+    fn system_subtypes_are_not_plain_user_messages() {
+        for subtype in [
+            "pinned_item",
+            "unpinned_item",
+            "channel_name",
+            "channel_archive",
+            "channel_unarchive",
+            "group_join",
+            "group_leave",
+            "group_topic",
+            "group_purpose",
+            "reminder_add",
+            "tombstone",
+        ] {
+            assert!(
+                !is_plain_user_message(subtype, "some text"),
+                "subtype {subtype} must not count as a user message",
+            );
+        }
     }
 
     /// Regression test: Slack streaming depends on allow_bot_messages config.
