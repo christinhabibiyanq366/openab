@@ -938,6 +938,7 @@ fn should_process_user_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bot_turns::{HARD_BOT_TURN_LIMIT, TurnResult};
 
     // --- resolve_mentions tests ---
 
