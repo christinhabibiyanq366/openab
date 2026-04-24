@@ -32,6 +32,7 @@ enum Commands {
     /// Run the bot (default)
     Run {
         /// Config file path or URL (default: config.toml)
+        #[arg(short = 'c', long = "config", value_name = "CONFIG")]
         config: Option<String>,
     },
     /// Launch the interactive setup wizard
@@ -40,9 +41,6 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
-    /// Implicit run with config path/URL (not shown in help)
-    #[command(external_subcommand)]
-    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -62,19 +60,16 @@ async fn main() -> anyhow::Result<()> {
             return Ok(());
         }
         Commands::Run { config } => config,
-        Commands::External(args) => {
-            if args.len() > 1 {
-                anyhow::bail!("unexpected extra arguments: {:?}", &args[1..]);
-            }
-            args.into_iter().next()
-        }
     };
 
     // -- Run path --
     let config_source = config_arg.unwrap_or_else(|| "config.toml".into());
 
-    let mut cfg = if config_source.starts_with("http://") || config_source.starts_with("https://") {
+    let mut cfg = if config_source.starts_with("https://") {
         info!(url = %config_source, "fetching remote config");
+        config::load_config_from_url(&config_source).await?
+    } else if config_source.starts_with("http://") {
+        warn!(url = %config_source, "fetching remote config over plaintext HTTP — use HTTPS in production");
         config::load_config_from_url(&config_source).await?
     } else {
         config::load_config(&PathBuf::from(&config_source))?
@@ -280,8 +275,26 @@ mod tests {
     }
 
     #[test]
-    fn cli_run_with_local_config() {
-        let cli = Cli::try_parse_from(["openab", "run", "my-config.toml"]).unwrap();
+    fn cli_run_no_args_defaults_config() {
+        let cli = Cli::try_parse_from(["openab", "run"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Run { config } => assert!(config.is_none()),
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_run_with_short_flag_local() {
+        let cli = Cli::try_parse_from(["openab", "run", "-c", "my-config.toml"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Run { config } => assert_eq!(config.unwrap(), "my-config.toml"),
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_run_with_long_flag_local() {
+        let cli = Cli::try_parse_from(["openab", "run", "--config", "my-config.toml"]).unwrap();
         match cli.command.unwrap() {
             Commands::Run { config } => assert_eq!(config.unwrap(), "my-config.toml"),
             _ => panic!("expected Run"),
@@ -290,35 +303,10 @@ mod tests {
 
     #[test]
     fn cli_run_with_remote_url() {
-        let cli = Cli::try_parse_from(["openab", "run", "https://example.com/config.toml"]).unwrap();
+        let cli = Cli::try_parse_from(["openab", "run", "-c", "https://example.com/config.toml"]).unwrap();
         match cli.command.unwrap() {
-            Commands::Run { config } => {
-                let src = config.unwrap();
-                assert!(src.starts_with("https://"));
-            }
+            Commands::Run { config } => assert!(config.unwrap().starts_with("https://")),
             _ => panic!("expected Run"),
-        }
-    }
-
-    #[test]
-    fn cli_bare_url_captured_by_external_subcommand() {
-        let cli = Cli::try_parse_from(["openab", "https://example.com/config.toml"]).unwrap();
-        match cli.command.unwrap() {
-            Commands::External(args) => {
-                assert_eq!(args.first().unwrap(), "https://example.com/config.toml");
-            }
-            _ => panic!("expected External"),
-        }
-    }
-
-    #[test]
-    fn cli_bare_local_path_captured_by_external_subcommand() {
-        let cli = Cli::try_parse_from(["openab", "my-config.toml"]).unwrap();
-        match cli.command.unwrap() {
-            Commands::External(args) => {
-                assert_eq!(args.first().unwrap(), "my-config.toml");
-            }
-            _ => panic!("expected External"),
         }
     }
 
@@ -326,14 +314,5 @@ mod tests {
     fn cli_setup_subcommand() {
         let cli = Cli::try_parse_from(["openab", "setup"]).unwrap();
         assert!(matches!(cli.command.unwrap(), Commands::Setup { .. }));
-    }
-
-    #[test]
-    fn cli_external_multiple_args_captured() {
-        let cli = Cli::try_parse_from(["openab", "config.toml", "extra"]).unwrap();
-        match cli.command.unwrap() {
-            Commands::External(args) => assert_eq!(args.len(), 2),
-            _ => panic!("expected External"),
-        }
     }
 }
