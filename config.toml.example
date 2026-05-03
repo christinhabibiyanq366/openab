@@ -101,6 +101,14 @@ working_dir = "/home/agent"
 # working_dir = "/home/agent"
 # env = {}  # Auth via: kubectl exec -it <pod> -- cursor-agent login
 
+# [agent]
+# command = "qwen"
+# args = ["--acp"]
+# working_dir = "/home/node"
+# # Auth via OAuth: kubectl exec -it <pod> -- qwen auth login
+# # Or via API key (OpenAI-compatible endpoint):
+# # env = { OPENAI_API_KEY = "${OPENAI_API_KEY}", OPENAI_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", OPENAI_MODEL = "qwen3-coder-plus" }
+
 [pool]
 max_sessions = 10
 session_ttl_hours = 24

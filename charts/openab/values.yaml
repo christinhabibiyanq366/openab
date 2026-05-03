@@ -120,6 +120,40 @@ agents:
     #     storageClass: ""
     #     size: 1Gi
     #   image: "ghcr.io/openabdev/openab-cursor:latest"
+    # qwen:
+    #   command: qwen
+    #   args:
+    #     - --acp
+    #   discord:
+    #     enabled: true
+    #     allowedChannels:
+    #       - "YOUR_CHANNEL_ID"
+    #     allowedUsers: []
+    #     allowBotMessages: "off"
+    #     trustedBotIds: []
+    #   workingDir: /home/node
+    #   # Auth via OAuth: kubectl exec -it <pod> -- qwen auth login
+    #   # Or via API key (OpenAI-compatible endpoint):
+    #   # env:
+    #   #   OPENAI_API_KEY: ""
+    #   #   OPENAI_BASE_URL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    #   #   OPENAI_MODEL: "qwen3-coder-plus"
+    #   env: {}
+    #   envFrom: []
+    #   pool:
+    #     maxSessions: 10
+    #     sessionTtlHours: 24
+    #   reactions:
+    #     enabled: true
+    #     removeAfterReply: false
+    #   persistence:
+    #     enabled: true
+    #     existingClaim: ""
+    #     storageClass: ""
+    #     size: 1Gi
+    #   agentsMd: ""
+    #   resources: {}
+    #   image: "ghcr.io/openabdev/openab-qwen:latest"
     image: ""
     command: kiro-cli
     args:
