@@ -1,7 +1,7 @@
 # Qwen Code
 
 Qwen Code is an AI-powered coding CLI adapted from [Gemini CLI](https://github.com/google-gemini/gemini-cli),
-optimised for the [Qwen3-Coder](https://github.com/QwenLM/Qwen3-Coder) family of models.
+optimized for the [Qwen3-Coder](https://github.com/QwenLM/Qwen3-Coder) family of models.
 It supports ACP natively via the `--acp` flag — no adapter needed.
 
 ## Docker Image
