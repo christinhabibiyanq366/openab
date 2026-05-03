@@ -81,6 +81,12 @@ working_dir = "/home/agent"
 # env = { GEMINI_API_KEY = "${GEMINI_API_KEY}" }
 
 # [agent]
+# command = "qwen"
+# args = ["--acp"]
+# working_dir = "/home/node"
+# env = { QWEN_API_KEY = "${QWEN_API_KEY}" }
+
+# [agent]
 # command = "copilot"
 # args = ["--acp", "--stdio"]
 # working_dir = "/home/agent"
